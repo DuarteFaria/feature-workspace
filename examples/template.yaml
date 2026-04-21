@@ -1,0 +1,24 @@
+name: DEV-123
+
+archive:
+  ttlDays: 7
+
+defaults:
+  ref: DEV-123
+  worktree: true
+  sourceRoot: ~/Documents/intuitivo
+  worktreeRoot: ~/FeatureWorkspaces/{workspace}
+
+editor:
+  command: zed
+  newWindow: true
+
+repositories:
+  - name: intuitivo
+    sourcePath: intuitivo
+
+  - name: tests-backend
+    sourcePath: tests-backend
+
+  - name: generate-assessment
+    sourcePath: generate-assessment

@@ -57,6 +57,7 @@ export type RepositoryPlan = {
   targetPath: string;
   ref: string;
   createFrom: string | null;
+  requestedCreateFrom: string | null;
   refExists: boolean | null;
   usesWorktree: boolean;
   sourceExists: boolean;

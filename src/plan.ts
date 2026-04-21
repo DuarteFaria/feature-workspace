@@ -95,6 +95,7 @@ function planRepository(manifest: WorkspaceManifest, repository: RepositoryManif
   const sourceExists = existsSync(sourcePath);
   const gitStatus = sourceExists ? detectGitStatus(sourcePath) : "missing";
   const refExists = gitStatus === "git-repo" ? hasRef(sourcePath, ref) : null;
+  const requestedCreateFrom = repository.createFrom ?? manifest.defaults?.createFrom ?? null;
   const createFrom =
     gitStatus === "git-repo" && !refExists ? resolveCreateFrom(manifest, repository, sourcePath) : null;
   const targetPath = usesWorktree ? resolveWorktreePath(manifest, repository, variables) : sourcePath;
@@ -116,6 +117,7 @@ function planRepository(manifest: WorkspaceManifest, repository: RepositoryManif
     targetPath,
     ref,
     createFrom,
+    requestedCreateFrom,
     refExists,
     usesWorktree,
     sourceExists,
@@ -253,6 +255,19 @@ function repositoryWarnings(repository: RepositoryPlan): PlanWarning[] {
     warnings.push({
       severity: "critical",
       message: `${repository.name}: could not resolve a base ref. Set createFrom for this repository or in defaults.`,
+    });
+  }
+
+  if (
+    repository.usesWorktree &&
+    repository.gitStatus === "git-repo" &&
+    repository.refExists &&
+    repository.targetExists &&
+    repository.requestedCreateFrom
+  ) {
+    warnings.push({
+      severity: "warning",
+      message: `${repository.name}: requested base ref ${repository.requestedCreateFrom} cannot change existing ${repository.ref} worktree: ${repository.targetPath}`,
     });
   }
 

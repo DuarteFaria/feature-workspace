@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type { WorkspaceConfig, WorkspaceManifest } from "./domain";
-import { loadManifest, loadWorkspaceConfig, serializeManifest } from "./config";
+import { expandPath, expandPathExpression, loadManifest, loadWorkspaceConfig, serializeManifest } from "./config";
 
 const FW_ROOT = ".fw";
 const ACTIVE_WORKSPACES_DIR = ".fw/workspaces";
@@ -30,6 +31,7 @@ export function loadWorkspace(input: string): WorkspaceRef {
 export function createWorkspaceManifest(input: {
   name: string;
   repos: string[];
+  createFrom?: string;
 }): WorkspaceRef {
   ensureFwStructure();
 
@@ -40,7 +42,7 @@ export function createWorkspaceManifest(input: {
   }
 
   const config = loadWorkspaceConfig(CONFIG_PATH);
-  const manifest = manifestFromConfig(input.name, input.repos, config);
+  const manifest = manifestFromConfig(input.name, input.repos, config, input.createFrom);
   writeFileSync(manifestPath, serializeManifest(manifest));
 
   return {
@@ -111,7 +113,14 @@ function activeWorkspacePath(name: string): string {
   return path.resolve(ACTIVE_WORKSPACES_DIR, `${name}.yaml`);
 }
 
-function manifestFromConfig(name: string, repos: string[], config: WorkspaceConfig): WorkspaceManifest {
+function manifestFromConfig(
+  name: string,
+  repos: string[],
+  config: WorkspaceConfig,
+  createFromOverride?: string,
+): WorkspaceManifest {
+  const defaultCreateFrom = createFromOverride ?? config.defaults?.createFrom;
+
   return {
     name,
     archive: {
@@ -122,7 +131,7 @@ function manifestFromConfig(name: string, repos: string[], config: WorkspaceConf
       worktree: config.defaults?.worktree ?? true,
       sourceRoot: config.defaults?.sourceRoot ?? "~/Documents/intuitivo",
       worktreeRoot: config.defaults?.worktreeRoot ?? "~/FeatureWorkspaces/{workspace}",
-      ...(config.defaults?.createFrom ? { createFrom: config.defaults.createFrom } : {}),
+      ...(defaultCreateFrom ? { createFrom: defaultCreateFrom } : {}),
     },
     editor: {
       command: config.editor?.command ?? "zed",
@@ -131,8 +140,57 @@ function manifestFromConfig(name: string, repos: string[], config: WorkspaceConf
     repositories: repos.map((repo) => ({
       name: repo,
       sourcePath: repo,
+      ...repositoryCreateFrom(name, repo, config, defaultCreateFrom),
     })),
   };
+}
+
+function repositoryCreateFrom(
+  workspaceName: string,
+  repo: string,
+  config: WorkspaceConfig,
+  defaultCreateFrom?: string,
+): { createFrom: string } | Record<string, never> {
+  if (defaultCreateFrom) {
+    return {};
+  }
+
+  const sourcePath = resolveConfiguredSourcePath(workspaceName, repo, config);
+  const currentBranch = getCurrentBranch(sourcePath);
+
+  return currentBranch ? { createFrom: currentBranch } : {};
+}
+
+function resolveConfiguredSourcePath(workspaceName: string, repo: string, config: WorkspaceConfig): string {
+  const variables = {
+    workspace: workspaceName,
+    repo,
+  };
+  const expandedSourcePath = expandPathExpression(repo, variables);
+
+  if (path.isAbsolute(expandedSourcePath)) {
+    return path.resolve(expandedSourcePath);
+  }
+
+  const sourceRoot = config.defaults?.sourceRoot ?? "~/Documents/intuitivo";
+  return path.resolve(path.join(expandPath(sourceRoot, variables), expandedSourcePath));
+}
+
+function getCurrentBranch(sourcePath: string): string | null {
+  if (!existsSync(sourcePath)) {
+    return null;
+  }
+
+  const result = spawnSync("git", ["-C", sourcePath, "branch", "--show-current"], {
+    encoding: "utf8",
+  });
+
+  if (result.status !== 0) {
+    return null;
+  }
+
+  const branch = result.stdout.trim();
+  return branch === "" ? null : branch;
 }
 
 function looksLikePath(input: string): boolean {

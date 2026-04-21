@@ -42,6 +42,12 @@ Create, apply, and open a workspace:
 bun run fw create DEV-123 --repos intuitivo,tests-backend,generate-assessment
 ```
 
+By default, `fw create` records each selected source repository's currently checked-out branch as the worktree base ref. To create a workspace branch from a specific base ref instead:
+
+```sh
+bun run fw create DEV-830 --repos intuitivo --create-from DEV-790
+```
+
 Apply a workspace after reviewing the plan:
 
 ```sh
@@ -145,6 +151,8 @@ Worktree base refs are resolved in this order:
 - `origin/HEAD`
 - local `main` or `master`
 - remote `origin/main` or `origin/master`
+
+When `fw create` generates a manifest without `--create-from`, it writes the current source repository branch into repository `createFrom`.
 
 ## Current Scope
 

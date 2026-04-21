@@ -8,7 +8,7 @@ Personal CLI for planning feature-first, multi-repository workspaces.
 
 `fw apply` prints the same plan, asks for confirmation, and then creates the planned worktrees. It does not open Zed, archive workspaces, or delete anything.
 
-`fw open` opens the planned target paths in one dedicated Zed project window.
+`fw open` opens the feature workspace root in one dedicated Zed project window when all target worktrees live under that root.
 
 `fw status` shows the current state of each target worktree.
 
@@ -22,6 +22,12 @@ Install dependencies:
 
 ```sh
 bun install
+```
+
+Run tests:
+
+```sh
+bun test
 ```
 
 Plan a workspace:
@@ -92,6 +98,8 @@ Archived workspace manifests live under:
 .fw/archive/<workspace>/<workspace>.yaml
 ```
 
+When archiving a manifest from a custom path, `fw archive` preserves that manifest filename under `.fw/archive/<workspace>/`.
+
 Defaults live under:
 
 ```txt
@@ -141,7 +149,7 @@ Worktree base refs are resolved in this order:
 ## Current Scope
 
 - Creates active workspace manifests from `.fw/config.yaml`
-- Builds a read-only execution plan
+- Builds an execution plan without applying Git worktree or editor actions
 - Applies a plan after explicit confirmation
 - Expands local paths
 - Detects missing source repositories
@@ -149,8 +157,8 @@ Worktree base refs are resolved in this order:
 - Prints planned `git worktree add` commands
 - Creates planned Git worktrees
 - Prints the editor command for a dedicated Zed project window
-- Opens target paths in Zed
-- Falls back to `/Applications/Zed.app/Contents/MacOS/cli` when `zed` is not installed in `PATH`
+- Opens the feature workspace root in Zed, falling back to target paths when targets do not share the configured worktree root
+- Falls back to `/Applications/Zed.app/Contents/MacOS/cli`, then `/Applications/Zed.app/Contents/MacOS/zed`, when `zed` is not installed in `PATH`
 - Shows branch, dirty state, upstream, and ahead/behind status for each target worktree
 - Archives manifests under `.fw/archive/<workspace>/`
 - Previews garbage collection with `fw gc`
@@ -160,7 +168,7 @@ Worktree base refs are resolved in this order:
 ## Not Implemented Yet
 
 - Removing local branches during garbage collection
-- Branch/ref existence checks
+- Full branch/ref existence checks, including explicit validation of configured base refs
 
 ## Garbage Collection Safety
 

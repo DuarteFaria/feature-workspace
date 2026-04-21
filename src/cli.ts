@@ -5,14 +5,12 @@ import { openEditor } from "./editor";
 import { runGc } from "./gc";
 import { buildPlan, formatPlan } from "./plan";
 import { buildStatus, formatStatus } from "./status";
-import { createWorkspaceManifest, ensureFwStructure, loadWorkspace } from "./workspaceStore";
+import { createWorkspaceManifest, loadWorkspace } from "./workspaceStore";
 
 const [, , command, ...commandArgs] = process.argv;
 const [manifestPath] = commandArgs;
 
 try {
-  ensureFwStructure();
-
   if (command === "gc") {
     const apply = commandArgs.includes("--apply");
     const forceApply = commandArgs.includes("--force-apply");

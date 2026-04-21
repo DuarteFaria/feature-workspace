@@ -21,9 +21,10 @@ export function buildPlan(manifest: WorkspaceManifest): WorkspacePlan {
   const repositories = manifest.repositories.map((repository) => planRepository(manifest, repository));
   const editorCommand = manifest.editor?.command ?? "zed";
   const shouldOpenNewWindow = manifest.editor?.newWindow ?? true;
+  const editorPaths = resolveEditorPaths(manifest, repositories);
   const editorCommandPlan = buildEditorCommand(
     editorCommand,
-    repositories.map((repository) => repository.targetPath),
+    editorPaths,
     { newWindow: shouldOpenNewWindow },
   );
   const warnings = repositories.flatMap((repository) => repositoryWarnings(repository));
@@ -153,6 +154,34 @@ function resolveWorktreePath(
 
   const root = manifest.defaults?.worktreeRoot ?? "~/FeatureWorkspaces/{workspace}";
   return path.join(expandPath(root, variables), repository.name);
+}
+
+function resolveEditorPaths(manifest: WorkspaceManifest, repositories: RepositoryPlan[]): string[] {
+  const workspaceRoot = resolveWorkspaceRoot(manifest);
+
+  if (workspaceRoot && repositories.every((repository) => isPathInside(repository.targetPath, workspaceRoot))) {
+    return [workspaceRoot];
+  }
+
+  return repositories.map((repository) => repository.targetPath);
+}
+
+function resolveWorkspaceRoot(manifest: WorkspaceManifest): string | null {
+  const worktreeRoot = manifest.defaults?.worktreeRoot ?? "~/FeatureWorkspaces/{workspace}";
+
+  if (!worktreeRoot) {
+    return null;
+  }
+
+  return expandPath(worktreeRoot, {
+    workspace: manifest.name,
+    repo: "",
+  });
+}
+
+function isPathInside(candidatePath: string, parentPath: string): boolean {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
 function detectGitStatus(sourcePath: string): RepositoryPlan["gitStatus"] {

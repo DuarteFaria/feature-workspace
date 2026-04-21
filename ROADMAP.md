@@ -8,8 +8,8 @@ This file is the source of truth for project tracking for now. No GitHub Issues 
 
 ### Blockers
 
-- [ ] Add integration tests with temporary Git repositories.
-- [ ] Avoid filesystem side effects in read-only commands.
+- [x] Add integration tests with temporary Git repositories.
+- [x] Avoid filesystem side effects in read-only commands.
 - [ ] Add full runtime validation for manifests, config, and archive metadata.
 - [ ] Treat corrupted or incomplete garbage collection metadata as a safety blocker.
 - [ ] Centralize archive and garbage collection safety policy.
@@ -20,7 +20,7 @@ This file is the source of truth for project tracking for now. No GitHub Issues 
 
 - [ ] Initialize Git repository.
 - [ ] Create GitHub repository.
-- [ ] Add the first test harness for Git-backed integration tests.
+- [x] Add the first test harness for Git-backed integration tests.
 
 ## Later
 

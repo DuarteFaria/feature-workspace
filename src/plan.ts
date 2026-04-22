@@ -1,7 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type {
+  PlannedFileCopy,
   PlannedCommand,
   PlanWarning,
   RepositoryManifest,
@@ -11,6 +12,7 @@ import type {
 } from "./domain";
 import { expandPath, expandPathExpression } from "./config";
 import { buildEditorCommand } from "./editor";
+import { buildTmuxSessionPlan } from "./runtime";
 
 type FormatPlanOptions = {
   mutationNotice?: string;
@@ -27,6 +29,7 @@ export function buildPlan(manifest: WorkspaceManifest): WorkspacePlan {
     editorPaths,
     { newWindow: shouldOpenNewWindow },
   );
+  const tmuxSession = buildTmuxSessionPlan(manifest, repositories);
   const warnings = repositories.flatMap((repository) => repositoryWarnings(repository));
 
   return {
@@ -34,6 +37,7 @@ export function buildPlan(manifest: WorkspaceManifest): WorkspacePlan {
     archiveTtlDays,
     repositories,
     editorCommand: editorCommandPlan,
+    tmuxSession,
     warnings,
   };
 }
@@ -64,11 +68,38 @@ export function formatPlan(plan: WorkspacePlan, options: FormatPlanOptions = {})
         lines.push(`    ${command.display}`);
       }
     }
+
+    if (repository.plannedFileCopies.length > 0) {
+      lines.push("  planned ignored file copies:");
+      for (const fileCopy of repository.plannedFileCopies) {
+        lines.push(`    ${fileCopy.display}`);
+      }
+    }
   }
 
   lines.push("");
   lines.push("Editor command:");
   lines.push(plan.editorCommand.display);
+
+  if (plan.tmuxSession) {
+    lines.push("");
+    lines.push("tmux session:");
+    lines.push(`  name: ${plan.tmuxSession.sessionName}`);
+    lines.push(`  kill existing: ${plan.tmuxSession.killExisting ? "yes" : "no"}`);
+    lines.push(`  startup delay: ${plan.tmuxSession.startupDelaySeconds}s`);
+
+    if (plan.tmuxSession.killProcessPatterns.length > 0) {
+      lines.push("  kill process patterns:");
+      for (const pattern of plan.tmuxSession.killProcessPatterns) {
+        lines.push(`    ${shellEscape(pattern)}`);
+      }
+    }
+
+    lines.push("  windows:");
+    for (const window of plan.tmuxSession.windows) {
+      lines.push(`    ${window.display}`);
+    }
+  }
 
   if (plan.warnings.length > 0) {
     lines.push("");
@@ -110,6 +141,13 @@ function planRepository(manifest: WorkspaceManifest, repository: RepositoryManif
     targetExists,
     gitStatus,
   });
+  const plannedFileCopies = buildPlannedFileCopies({
+    sourcePath,
+    targetPath,
+    usesWorktree,
+    gitStatus,
+    patterns: repository.copyIgnored ?? manifest.defaults?.copyIgnored ?? [],
+  });
 
   return {
     name: repository.name,
@@ -124,6 +162,7 @@ function planRepository(manifest: WorkspaceManifest, repository: RepositoryManif
     targetExists,
     gitStatus,
     plannedCommands,
+    plannedFileCopies,
   };
 }
 
@@ -226,6 +265,61 @@ function buildPlannedCommands(input: {
   return [
     command("git", ["-C", input.sourcePath, "worktree", "add", input.targetPath, input.ref]),
   ];
+}
+
+function buildPlannedFileCopies(input: {
+  sourcePath: string;
+  targetPath: string;
+  usesWorktree: boolean;
+  gitStatus: RepositoryPlan["gitStatus"];
+  patterns: string[];
+}): PlannedFileCopy[] {
+  if (!input.usesWorktree || input.gitStatus !== "git-repo" || input.patterns.length === 0) {
+    return [];
+  }
+
+  return ignoredFiles(input.sourcePath, input.patterns)
+    .filter((relativePath) => {
+      const sourcePath = path.join(input.sourcePath, relativePath);
+      const targetPath = path.join(input.targetPath, relativePath);
+
+      return isCopyableFile(sourcePath) && !existsSync(targetPath);
+    })
+    .map((relativePath) => {
+      const sourcePath = path.join(input.sourcePath, relativePath);
+      const targetPath = path.join(input.targetPath, relativePath);
+
+      return {
+        sourcePath,
+        targetPath,
+        relativePath,
+        display: `${shellEscape(relativePath)} -> ${shellEscape(targetPath)}`,
+      };
+    });
+}
+
+function ignoredFiles(sourcePath: string, patterns: string[]): string[] {
+  const result = spawnSync("git", ["-C", sourcePath, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", ...patterns], {
+    encoding: "utf8",
+  });
+
+  if (result.status !== 0) {
+    return [];
+  }
+
+  return result.stdout
+    .split("\0")
+    .filter((entry) => entry !== "")
+    .sort();
+}
+
+function isCopyableFile(filePath: string): boolean {
+  try {
+    const stat = lstatSync(filePath);
+    return stat.isFile() || stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 function repositoryWarnings(repository: RepositoryPlan): PlanWarning[] {

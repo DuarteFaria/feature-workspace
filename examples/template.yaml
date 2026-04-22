@@ -8,10 +8,40 @@ defaults:
   worktree: true
   sourceRoot: ~/Documents/intuitivo
   worktreeRoot: ~/FeatureWorkspaces/{workspace}
+  copyIgnored:
+    - .env
+    - .npmrc
+    - secrets/jwtKey
+    - secrets/jwtKey.pub
 
 editor:
   command: zed
   newWindow: true
+
+runtime:
+  tmux:
+    enabled: true
+    sessionName: "{workspaceLower}"
+    killExisting: true
+    startupDelaySeconds: 2
+    shellPrefix: "source ~/.nvm/nvm.sh && nvm use --silent"
+    windows:
+      - name: intuitivo
+        repo: intuitivo
+        install: yarn install
+        command: yarn start
+      - name: tests-backend
+        repo: tests-backend
+        install: yarn install
+        command: yarn dev
+      - name: generate-assessment
+        repo: generate-assessment
+        install: pnpm install
+        command: pnpm dev
+      - name: auth-backend
+        path: "{sourceRoot}/auth-backend"
+        install: yarn install
+        command: yarn dev
 
 repositories:
   - name: intuitivo

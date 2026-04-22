@@ -53,7 +53,7 @@ The explicit local configuration file that defines a **Feature Workspace** as da
 _Avoid_: Inferred state, ad hoc shell setup
 
 **tmux Runtime Layout**:
-A tmux or tmuxp session description used to open terminals and run commands for part of a **Feature Workspace**.
+A tmux session description used to open terminals and run commands for the **Runtime State** of a **Feature Workspace**.
 _Avoid_: Full workspace definition, source of truth
 
 **Archive Window**:
@@ -86,6 +86,7 @@ _Avoid_: Immediate mutation, hidden side effects
 - **Forced Garbage Collection** may clean archived workspaces before their **Archive Window** expires
 - Opening or modifying a **Feature Workspace** first produces one **Execution Plan**
 - Each **Repository Mapping** binds one repository to exactly one branch or ref within a **Feature Workspace**
+- A **tmux Runtime Layout** may start commands for **Focus Repositories** and external **Baseline Runtime** services
 
 ## Example dialogue
 
@@ -97,6 +98,9 @@ _Avoid_: Immediate mutation, hidden side effects
 
 > **Dev:** "I'm only editing `generate-assessments`, but `tests-backend` still needs to be running."
 > **Domain expert:** "Then `generate-assessments` is a **Focus Repository**, while `tests-backend` may remain part of the external **Baseline Runtime**."
+
+> **Dev:** "Open the feature and start the services."
+> **Domain expert:** "Start the configured **tmux Runtime Layout** for the **Runtime State**, then open the **Zed Project Window**."
 
 > **Dev:** "Open the focus repos in Zed."
 > **Domain expert:** "Open one **Zed Project Window** containing the selected repo folders or worktrees."

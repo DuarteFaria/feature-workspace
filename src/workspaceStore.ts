@@ -3,11 +3,13 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type { WorkspaceConfig, WorkspaceManifest } from "./domain";
 import { expandPath, expandPathExpression, loadManifest, loadWorkspaceConfig, serializeManifest } from "./config";
+import { DEFAULT_TMUX_RUNTIME } from "./runtime";
 
 const FW_ROOT = ".fw";
 const ACTIVE_WORKSPACES_DIR = ".fw/workspaces";
 const ARCHIVE_DIR = ".fw/archive";
 const CONFIG_PATH = ".fw/config.yaml";
+const DEFAULT_COPY_IGNORED = [".env", ".npmrc", "secrets/jwtKey", "secrets/jwtKey.pub"];
 
 export type WorkspaceRef = {
   input: string;
@@ -120,6 +122,7 @@ function manifestFromConfig(
   createFromOverride?: string,
 ): WorkspaceManifest {
   const defaultCreateFrom = createFromOverride ?? config.defaults?.createFrom;
+  const copyIgnored = config.defaults?.copyIgnored ?? DEFAULT_COPY_IGNORED;
 
   return {
     name,
@@ -132,10 +135,14 @@ function manifestFromConfig(
       sourceRoot: config.defaults?.sourceRoot ?? "~/Documents/intuitivo",
       worktreeRoot: config.defaults?.worktreeRoot ?? "~/FeatureWorkspaces/{workspace}",
       ...(defaultCreateFrom ? { createFrom: defaultCreateFrom } : {}),
+      copyIgnored,
     },
     editor: {
       command: config.editor?.command ?? "zed",
       newWindow: config.editor?.newWindow ?? true,
+    },
+    runtime: {
+      tmux: config.runtime?.tmux ?? DEFAULT_TMUX_RUNTIME,
     },
     repositories: repos.map((repo) => ({
       name: repo,
@@ -205,9 +212,36 @@ defaults:
   worktree: true
   sourceRoot: ~/Documents/intuitivo
   worktreeRoot: ~/FeatureWorkspaces/{workspace}
+  copyIgnored:
+${DEFAULT_COPY_IGNORED.map((pattern) => `    - ${pattern}`).join("\n")}
 
 editor:
   command: zed
   newWindow: true
+
+runtime:
+  tmux:
+    enabled: true
+    sessionName: "{workspaceLower}"
+    killExisting: true
+    startupDelaySeconds: 2
+    shellPrefix: "source ~/.nvm/nvm.sh && nvm use --silent"
+    windows:
+      - name: intuitivo
+        repo: intuitivo
+        install: yarn install
+        command: yarn start
+      - name: tests-backend
+        repo: tests-backend
+        install: yarn install
+        command: yarn dev
+      - name: generate-assessment
+        repo: generate-assessment
+        install: pnpm install
+        command: pnpm dev
+      - name: auth-backend
+        path: "{sourceRoot}/auth-backend"
+        install: yarn install
+        command: yarn dev
 `;
 }

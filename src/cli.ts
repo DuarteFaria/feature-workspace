@@ -4,6 +4,7 @@ import { archiveWorkspace } from "./archive";
 import { openEditor } from "./editor";
 import { runGc } from "./gc";
 import { buildPlan, formatPlan } from "./plan";
+import { startTmuxSession } from "./runtime";
 import { buildStatus, formatStatus } from "./status";
 import { createWorkspaceManifest, loadWorkspace } from "./workspaceStore";
 
@@ -43,7 +44,7 @@ try {
     console.log(formatPlan(plan, { mutationNotice: "No filesystem changes have been made yet." }));
 
     const applied = await applyPlan(plan, {
-      confirmQuestion: "Create worktrees and open Zed? [y/N] ",
+      confirmQuestion: "Create worktrees, copy ignored files, and open Zed? [y/N] ",
     });
 
     if (applied) {
@@ -78,6 +79,7 @@ try {
 
   if (command === "open") {
     openEditor(plan);
+    await startTmuxSession(plan);
   }
 
   if (command === "archive") {

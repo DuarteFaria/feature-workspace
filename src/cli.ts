@@ -6,7 +6,8 @@ import { runGc } from "./gc";
 import { buildPlan, formatPlan } from "./plan";
 import { startTmuxSession } from "./runtime";
 import { buildStatus, formatStatus } from "./status";
-import { createWorkspaceManifest, loadWorkspace } from "./workspaceStore";
+import { createWorkspaceManifest, loadWorkspace, prepareWorkspaceRepositoryAddition, saveWorkspaceManifest } from "./workspaceStore";
+import type { WorkspacePlan } from "./domain";
 
 const [, , command, ...commandArgs] = process.argv;
 const [manifestPath] = commandArgs;
@@ -50,6 +51,39 @@ try {
     if (applied) {
       openEditor(buildPlan(workspace.manifest));
     }
+
+    process.exit(0);
+  }
+
+  if (command === "add") {
+    const workspaceName = commandArgs[0];
+    const repos = parsePositionalRepos(commandArgs.slice(1));
+    const createFrom = parseOptionalValueFlag(commandArgs, ["--create-from", "--base"]);
+
+    if (!workspaceName || repos.length === 0) {
+      printUsage();
+      process.exit(1);
+    }
+
+    const workspace = prepareWorkspaceRepositoryAddition({
+      workspace: workspaceName,
+      repos,
+      ...(createFrom ? { createFrom } : {}),
+    });
+    const plan = buildPlan(workspace.manifest);
+
+    if (planHasCriticalWarnings(plan)) {
+      console.log(formatPlan(plan, { mutationNotice: "Manifest was not updated because the updated workspace has critical warnings." }));
+      assertNoCriticalWarningsForAdd(plan);
+    }
+
+    saveWorkspaceManifest(workspace);
+    console.log(`Updated active manifest: ${workspace.manifestPath}`);
+    console.log(formatPlan(plan, { mutationNotice: "Manifest has been updated. No worktrees have been created yet." }));
+
+    await applyPlan(plan, {
+      confirmQuestion: "Create missing worktrees and copy ignored files? [y/N] ",
+    });
 
     process.exit(0);
   }
@@ -99,9 +133,20 @@ function mutationNoticeFor(command: string): string {
   return "No filesystem changes were made.";
 }
 
+function planHasCriticalWarnings(plan: WorkspacePlan): boolean {
+  return plan.warnings.some((warning) => warning.severity === "critical");
+}
+
+function assertNoCriticalWarningsForAdd(plan: WorkspacePlan): void {
+  if (planHasCriticalWarnings(plan)) {
+    throw new Error("Cannot add repositories because the updated workspace has critical warnings.");
+  }
+}
+
 function printUsage(): void {
   console.log(`Usage:
   fw create <workspace> --repos repo-a,repo-b [--create-from ref]
+  fw add <workspace> repo-a[,repo-b] [repo-c] [--create-from ref]
   fw plan <workspace|manifest.yaml>
   fw apply <workspace|manifest.yaml>
   fw open <workspace|manifest.yaml>
@@ -112,6 +157,7 @@ function printUsage(): void {
 Examples:
   bun run fw create DEV-123 --repos intuitivo,tests-backend,generate-assessment
   bun run fw create DEV-830 --repos intuitivo --create-from DEV-790
+  bun run fw add DEV-123 tests-backend,generate-assessment
   bun run fw plan DEV-123
   bun run fw apply DEV-123
   bun run fw open DEV-123
@@ -139,6 +185,30 @@ function parseRepos(args: string[]): string[] {
     .split(",")
     .map((repo) => repo.trim())
     .filter(Boolean);
+}
+
+function parsePositionalRepos(args: string[]): string[] {
+  const repos: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) {
+      continue;
+    }
+
+    if (arg === "--create-from" || arg === "--base") {
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--")) {
+      continue;
+    }
+
+    repos.push(...arg.split(","));
+  }
+
+  return [...new Set(repos.map((repo) => repo.trim()).filter(Boolean))];
 }
 
 function parseOptionalValueFlag(args: string[], flags: string[]): string | undefined {

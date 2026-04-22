@@ -32,6 +32,10 @@ _Avoid_: Focus repos, edit targets, workspace-owned runtime
 A repository that is actively being edited or inspected as part of the current **Feature Workspace**.
 _Avoid_: Always-on dependency, runtime-only service
 
+**Workspace Expansion**:
+Adding one or more **Repository Mappings** to an existing **Active Workspace Manifest**.
+_Avoid_: Recreating the workspace, editing archived manifests
+
 **Zed Project Window**:
 A dedicated Zed window containing the folders or worktrees for the **Focus Repositories** in a **Feature Workspace**.
 _Avoid_: VS Code-style workspace file, persistent multi-root workspace
@@ -68,6 +72,10 @@ _Avoid_: Unsafe delete, branch deletion
 The preview of filesystem, Git, and editor actions that will be applied to open or modify a **Feature Workspace**.
 _Avoid_: Immediate mutation, hidden side effects
 
+**Tool Dependency**:
+An external executable required by a command path, such as Git for worktrees, tmux for runtime sessions, Zed for editor launch, or package managers referenced by runtime commands.
+_Avoid_: Bundled dependency, project library
+
 ## Relationships
 
 - A **Feature Workspace** includes one or more **Repository Mappings**
@@ -87,6 +95,9 @@ _Avoid_: Immediate mutation, hidden side effects
 - Opening or modifying a **Feature Workspace** first produces one **Execution Plan**
 - Each **Repository Mapping** binds one repository to exactly one branch or ref within a **Feature Workspace**
 - A **tmux Runtime Layout** may start commands for **Focus Repositories** and external **Baseline Runtime** services
+- A **Workspace Expansion** modifies only an **Active Workspace Manifest**
+- A **Workspace Expansion** must validate the updated **Execution Plan** before saving the new **Repository Mappings**
+- A command may require one or more **Tool Dependencies** installed on the developer machine
 
 ## Example dialogue
 
@@ -108,6 +119,9 @@ _Avoid_: Immediate mutation, hidden side effects
 > **Dev:** "Create the workspace for `DEV-123`."
 > **Domain expert:** "First show the **Execution Plan**: branches, worktrees, folders, and Zed command. Apply it only after confirmation."
 
+> **Dev:** "Add `tests-backend` to `DEV-123`."
+> **Domain expert:** "That is a **Workspace Expansion**. Build the updated **Execution Plan**, save it only if there are no critical warnings, then ask before creating missing worktrees."
+
 ## Flagged ambiguities
 
 - "environment" was used to mean both local runtime setup and the overall multi-repo working unit — resolved: use **Feature Workspace** for the working unit and **Runtime State** for what runs locally.
@@ -117,3 +131,6 @@ _Avoid_: Immediate mutation, hidden side effects
 - "multi-root workspace" in Zed should not imply a persistent VS Code `.code-workspace` equivalent — resolved: use **Zed Project Window** for a transient Zed project containing multiple folders/worktrees.
 - "default branch" cannot be assumed globally because some repositories use `main` and others use `master` — resolved: use **Base Ref** and resolve it per repository, with explicit overrides available.
 - "force" in garbage collection could imply ignoring all safety checks — resolved: **Forced Garbage Collection** ignores only archive TTL and still blocks unsafe worktree removal.
+- "add a repo to a workspace" could imply mutating any manifest file — resolved: **Workspace Expansion** applies only to an **Active Workspace Manifest**, never an **Archived Workspace Manifest** or arbitrary manifest path.
+- "add then apply" could imply saving invalid mappings before Git validation — resolved: **Workspace Expansion** validates the updated **Execution Plan** before saving the manifest.
+- "dependencies" could mean npm packages or local executables — resolved: use **Tool Dependency** for external commands such as `git`, `tmux`, `zed`, `nvm`, `yarn`, and `pnpm`.

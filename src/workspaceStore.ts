@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import type { WorkspaceConfig, WorkspaceManifest } from "./domain";
+import type { RepositoryManifest, WorkspaceConfig, WorkspaceManifest } from "./domain";
 import { expandPath, expandPathExpression, loadManifest, loadWorkspaceConfig, serializeManifest } from "./config";
 import { DEFAULT_TMUX_RUNTIME } from "./runtime";
 
@@ -53,6 +53,51 @@ export function createWorkspaceManifest(input: {
     manifest,
     source: "active",
   };
+}
+
+export function prepareWorkspaceRepositoryAddition(input: {
+  workspace: string;
+  repos: string[];
+  createFrom?: string;
+}): WorkspaceRef {
+  const workspace = loadWorkspace(input.workspace);
+
+  if (workspace.source !== "active") {
+    throw new Error(`Can only add repositories to an active workspace: ${input.workspace}`);
+  }
+
+  const existingRepos = new Set(workspace.manifest.repositories.map((repository) => repository.name));
+  const duplicateRepos = input.repos.filter((repo) => existingRepos.has(repo));
+
+  if (duplicateRepos.length > 0) {
+    throw new Error(`Workspace already includes repositories: ${duplicateRepos.join(", ")}`);
+  }
+
+  const manifestDefaults = workspace.manifest.defaults ? { defaults: workspace.manifest.defaults } : {};
+  const manifest: WorkspaceManifest = {
+    ...workspace.manifest,
+    repositories: [
+      ...workspace.manifest.repositories,
+      ...input.repos.map((repo) =>
+        repositoryManifestFromDefaults(
+          workspace.manifest.name,
+          repo,
+          manifestDefaults,
+          workspace.manifest.defaults?.createFrom,
+          input.createFrom,
+        ),
+      ),
+    ],
+  };
+
+  return {
+    ...workspace,
+    manifest,
+  };
+}
+
+export function saveWorkspaceManifest(workspace: Pick<WorkspaceRef, "manifestPath" | "manifest">): void {
+  writeFileSync(workspace.manifestPath, serializeManifest(workspace.manifest));
 }
 
 export function ensureFwStructure(): void {
@@ -144,21 +189,36 @@ function manifestFromConfig(
     runtime: {
       tmux: config.runtime?.tmux ?? DEFAULT_TMUX_RUNTIME,
     },
-    repositories: repos.map((repo) => ({
-      name: repo,
-      sourcePath: repo,
-      ...repositoryCreateFrom(name, repo, config, defaultCreateFrom),
-    })),
+    repositories: repos.map((repo) => repositoryManifestFromDefaults(name, repo, config, defaultCreateFrom)),
+  };
+}
+
+function repositoryManifestFromDefaults(
+  workspaceName: string,
+  repo: string,
+  config: Pick<WorkspaceConfig, "defaults">,
+  inheritedCreateFrom?: string,
+  explicitCreateFrom?: string,
+): RepositoryManifest {
+  return {
+    name: repo,
+    sourcePath: repo,
+    ...repositoryCreateFrom(workspaceName, repo, config, inheritedCreateFrom, explicitCreateFrom),
   };
 }
 
 function repositoryCreateFrom(
   workspaceName: string,
   repo: string,
-  config: WorkspaceConfig,
-  defaultCreateFrom?: string,
+  config: Pick<WorkspaceConfig, "defaults">,
+  inheritedCreateFrom?: string,
+  explicitCreateFrom?: string,
 ): { createFrom: string } | Record<string, never> {
-  if (defaultCreateFrom) {
+  if (explicitCreateFrom) {
+    return { createFrom: explicitCreateFrom };
+  }
+
+  if (inheritedCreateFrom) {
     return {};
   }
 

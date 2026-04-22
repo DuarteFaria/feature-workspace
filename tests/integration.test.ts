@@ -212,6 +212,102 @@ describe("fw CLI integration", () => {
     });
   });
 
+  test("add appends repositories to an active workspace and applies missing worktrees", () => {
+    withTempDir((workspaceRoot) => {
+      const sourceRoot = path.join(workspaceRoot, "sources");
+      const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
+      const sourceRepoA = path.join(sourceRoot, "repo-a");
+      const sourceRepoB = path.join(sourceRoot, "repo-b");
+      const targetRepoA = path.join(workspaceRoot, "worktrees", "DEV-830", "repo-a");
+      const targetRepoB = path.join(workspaceRoot, "worktrees", "DEV-830", "repo-b");
+
+      createGitRepo(sourceRepoA);
+      createGitRepo(sourceRepoB);
+      git(sourceRepoB, ["checkout", "-B", "DEV-790"]);
+      writeConfig(workspaceRoot, {
+        sourceRoot,
+        worktreeRoot,
+      });
+
+      const create = runCli(workspaceRoot, ["create", "DEV-830", "--repos", "repo-a"], "y\n");
+      expect(create.status).toBe(0);
+      expect(existsSync(targetRepoA)).toBe(true);
+      expect(existsSync(targetRepoB)).toBe(false);
+
+      const add = runCli(workspaceRoot, ["add", "DEV-830", "repo-b"], "y\n");
+      expect(add.status).toBe(0);
+      expect(add.stdout).toContain("Updated active manifest:");
+      expect(add.stdout).toContain("- repo-b");
+      expect(add.stdout).toContain("create from: DEV-790");
+      expect(add.stdout).toContain("worktree add -b DEV-830");
+      expect(add.stdout).toContain("Apply complete.");
+      expect(existsSync(targetRepoB)).toBe(true);
+
+      const manifestPath = path.join(workspaceRoot, ".fw", "workspaces", "DEV-830.yaml");
+      const manifest = readFileSync(manifestPath, "utf8");
+      expect(manifest).toContain("name: repo-a");
+      expect(manifest).toContain("name: repo-b");
+      expect(manifest).toContain("createFrom: DEV-790");
+    });
+  });
+
+  test("add rejects archived manifests passed by path", () => {
+    withTempDir((workspaceRoot) => {
+      const sourceRoot = path.join(workspaceRoot, "sources");
+      const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
+      const sourceRepoA = path.join(sourceRoot, "repo-a");
+      const sourceRepoB = path.join(sourceRoot, "repo-b");
+
+      createGitRepo(sourceRepoA);
+      createGitRepo(sourceRepoB);
+      writeConfig(workspaceRoot, {
+        sourceRoot,
+        worktreeRoot,
+      });
+
+      const create = runCli(workspaceRoot, ["create", "DEV-830", "--repos", "repo-a"], "y\n");
+      expect(create.status).toBe(0);
+
+      const archive = runCli(workspaceRoot, ["archive", "DEV-830"]);
+      expect(archive.status).toBe(0);
+
+      const archivedManifestPath = path.join(workspaceRoot, ".fw", "archive", "DEV-830", "DEV-830.yaml");
+      const before = readFileSync(archivedManifestPath, "utf8");
+      const add = runCli(workspaceRoot, ["add", archivedManifestPath, "repo-b"], "y\n");
+
+      expect(add.status).not.toBe(0);
+      expect(add.stderr).toContain("Can only add repositories to an active workspace");
+      expect(readFileSync(archivedManifestPath, "utf8")).toBe(before);
+    });
+  });
+
+  test("add does not update the manifest when the updated plan has critical warnings", () => {
+    withTempDir((workspaceRoot) => {
+      const sourceRoot = path.join(workspaceRoot, "sources");
+      const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
+      const sourceRepoA = path.join(sourceRoot, "repo-a");
+
+      createGitRepo(sourceRepoA);
+      writeConfig(workspaceRoot, {
+        sourceRoot,
+        worktreeRoot,
+      });
+
+      const create = runCli(workspaceRoot, ["create", "DEV-830", "--repos", "repo-a"], "y\n");
+      expect(create.status).toBe(0);
+
+      const manifestPath = path.join(workspaceRoot, ".fw", "workspaces", "DEV-830.yaml");
+      const before = readFileSync(manifestPath, "utf8");
+      const add = runCli(workspaceRoot, ["add", "DEV-830", "missing-repo"], "y\n");
+
+      expect(add.status).not.toBe(0);
+      expect(add.stdout).toContain("- [critical] missing-repo: source path does not exist:");
+      expect(add.stdout).toContain("Manifest was not updated because the updated workspace has critical warnings.");
+      expect(add.stderr).toContain("Cannot add repositories because the updated workspace has critical warnings.");
+      expect(readFileSync(manifestPath, "utf8")).toBe(before);
+    });
+  });
+
   test("apply copies configured ignored files into worktrees", () => {
     withTempDir((workspaceRoot) => {
       const sourceRoot = path.join(workspaceRoot, "sources");

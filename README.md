@@ -4,6 +4,8 @@ Personal CLI for planning feature-first, multi-repository workspaces.
 
 `fw create` creates an active workspace manifest, shows the plan, asks for confirmation, creates worktrees, and opens Zed if the apply step succeeds.
 
+`fw add` appends repositories to an existing active workspace manifest, shows the updated plan, and asks for confirmation before creating missing worktrees or copying ignored runtime files.
+
 `fw plan` is read-only: it reads a workspace manifest and prints the Git worktree actions and Zed command that would be used for the workspace.
 
 `fw apply` prints the same plan, asks for confirmation, and then creates the planned worktrees and copies configured ignored runtime files. It does not open Zed, archive workspaces, or delete anything.
@@ -18,7 +20,24 @@ Personal CLI for planning feature-first, multi-repository workspaces.
 
 ## Usage
 
-Install dependencies:
+Install required software:
+
+```sh
+brew install bun git tmux
+```
+
+Required external tools:
+
+- `bun`: runs the CLI and test suite
+- `git`: inspects repositories and creates worktrees
+- `tmux`: starts runtime sessions for `fw open` when `runtime.tmux.enabled` is true
+
+Optional or config-dependent tools:
+
+- `zed`: opened by `fw open` when `editor.command` is `zed`; the CLI falls back to common macOS Zed app paths
+- `nvm`, `yarn`, `pnpm`, or other package/runtime commands referenced by `.fw/config.yaml`
+
+Install project dependencies:
 
 ```sh
 bun install
@@ -41,6 +60,14 @@ Create, apply, and open a workspace:
 ```sh
 bun run fw create DEV-123 --repos intuitivo,tests-backend,generate-assessment
 ```
+
+Add repositories to an existing workspace:
+
+```sh
+bun run fw add DEV-123 tests-backend,generate-assessment
+```
+
+`fw add` only updates active workspace manifests under `.fw/workspaces`. It rejects archived manifests and arbitrary manifest paths. Before saving, it builds the updated plan and leaves the manifest unchanged if the added repositories produce critical warnings, such as missing source repositories.
 
 By default, `fw create` records each selected source repository's currently checked-out branch as the worktree base ref. To create a workspace branch from a specific base ref instead:
 
@@ -189,6 +216,8 @@ Worktree base refs are resolved in this order:
 
 When `fw create` generates a manifest without `--create-from`, it writes the current source repository branch into repository `createFrom`.
 
+When `fw add` appends repositories to a workspace without `--create-from` and the workspace has no default `createFrom`, it also writes each added source repository's current branch into that repository's `createFrom`.
+
 ## tmux Runtime
 
 `runtime.tmux.windows` defines the commands `fw open` starts. A window with `repo` uses that repository's target path from the workspace; if the workspace does not include that repository, the window is skipped. A window with `path` always uses that expanded path, which is useful for baseline services such as `auth-backend`.
@@ -204,6 +233,7 @@ By default, `fw open` opens the editor first, then kills an existing tmux sessio
 ## Current Scope
 
 - Creates active workspace manifests from `.fw/config.yaml`
+- Adds repositories to active workspace manifests only after validating the updated execution plan
 - Builds an execution plan without applying Git worktree or editor actions
 - Applies a plan after explicit confirmation
 - Expands local paths

@@ -45,11 +45,13 @@ try {
     console.log(formatPlan(plan, { mutationNotice: "No filesystem changes have been made yet." }));
 
     const applied = await applyPlan(plan, {
-      confirmQuestion: "Create worktrees, copy ignored files, and open Zed? [y/N] ",
+      confirmQuestion: "Create worktrees, copy ignored files, open Zed, and start tmux? [y/N] ",
     });
 
     if (applied) {
-      openEditor(buildPlan(workspace.manifest));
+      const appliedPlan = buildPlan(workspace.manifest);
+      openEditor(appliedPlan);
+      await startTmuxSession(appliedPlan);
     }
 
     process.exit(0);

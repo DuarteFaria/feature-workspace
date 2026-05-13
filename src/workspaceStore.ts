@@ -9,7 +9,7 @@ const FW_ROOT = ".fw";
 const ACTIVE_WORKSPACES_DIR = ".fw/workspaces";
 const ARCHIVE_DIR = ".fw/archive";
 const CONFIG_PATH = ".fw/config.yaml";
-const DEFAULT_COPY_IGNORED = [".env", ".npmrc", "secrets/jwtKey", "secrets/jwtKey.pub"];
+const DEFAULT_COPY_IGNORED = [":(glob)**/.env", ":(glob)**/.npmrc", ":(glob)**/secrets/**"];
 
 export type WorkspaceRef = {
   input: string;
@@ -290,7 +290,7 @@ runtime:
       - name: intuitivo
         repo: intuitivo
         install: yarn install
-        command: yarn start
+        command: yarn build && yarn start
       - name: tests-backend
         repo: tests-backend
         install: yarn install
@@ -299,9 +299,5 @@ runtime:
         repo: generate-assessment
         install: pnpm install
         command: pnpm dev
-      - name: auth-backend
-        path: "{sourceRoot}/auth-backend"
-        install: yarn install
-        command: yarn dev
 `;
 }

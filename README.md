@@ -2,7 +2,7 @@
 
 Personal CLI for planning feature-first, multi-repository workspaces.
 
-`fw create` creates an active workspace manifest, shows the plan, asks for confirmation, creates worktrees, and opens Zed if the apply step succeeds.
+`fw create` creates an active workspace manifest, shows the plan, asks for confirmation, creates worktrees, opens Zed, and starts the configured tmux runtime if the apply step succeeds.
 
 `fw add` appends repositories to an existing active workspace manifest, shows the updated plan, and asks for confirmation before creating missing worktrees or copying ignored runtime files.
 
@@ -30,11 +30,11 @@ Required external tools:
 
 - `bun`: runs the CLI and test suite
 - `git`: inspects repositories and creates worktrees
-- `tmux`: starts runtime sessions for `fw open` when `runtime.tmux.enabled` is true
+- `tmux`: starts runtime sessions for `fw create` and `fw open` when `runtime.tmux.enabled` is true
 
 Optional or config-dependent tools:
 
-- `zed`: opened by `fw open` when `editor.command` is `zed`; the CLI falls back to common macOS Zed app paths
+- `zed`: opened by `fw create` and `fw open` when `editor.command` is `zed`; the CLI falls back to common macOS Zed app paths
 - `nvm`, `yarn`, `pnpm`, or other package/runtime commands referenced by `.fw/config.yaml`
 
 Install project dependencies:
@@ -151,10 +151,9 @@ defaults:
   sourceRoot: ~/Documents/intuitivo
   worktreeRoot: ~/FeatureWorkspaces/{workspace}
   copyIgnored:
-    - .env
-    - .npmrc
-    - secrets/jwtKey
-    - secrets/jwtKey.pub
+    - ":(glob)**/.env"
+    - ":(glob)**/.npmrc"
+    - ":(glob)**/secrets/**"
 
 editor:
   command: zed
@@ -171,7 +170,7 @@ runtime:
       - name: intuitivo
         repo: intuitivo
         install: yarn install
-        command: yarn start
+        command: yarn build && yarn start
       - name: tests-backend
         repo: tests-backend
         install: yarn install
@@ -180,10 +179,6 @@ runtime:
         repo: generate-assessment
         install: pnpm install
         command: pnpm dev
-      - name: auth-backend
-        path: "{sourceRoot}/auth-backend"
-        install: yarn install
-        command: yarn dev
 
 repositories:
   - name: intuitivo
@@ -204,7 +199,7 @@ Supported placeholders:
 
 Repository `sourcePath` values can be absolute or relative. Relative values are resolved from `defaults.sourceRoot`.
 
-`copyIgnored` is an explicit list of Git pathspecs for ignored runtime files to copy from the source checkout into the worktree. When config omits it, `fw create` defaults to `.env`, `.npmrc`, `secrets/jwtKey`, and `secrets/jwtKey.pub`. `fw apply` only copies files Git reports as ignored, and it skips a target file that already exists. Dependency folders such as `node_modules` are intentionally not copied; install them inside the worktree with the repository package manager.
+`copyIgnored` is an explicit list of Git pathspecs for ignored runtime files to copy from the source checkout into the worktree. When config omits it, `fw create` defaults to every ignored `.env`, `.npmrc`, and file under a `secrets` directory anywhere in the repository, which covers monorepos with multiple projects. `fw apply` only copies files Git reports as ignored, and it skips a target file that already exists. Dependency folders such as `node_modules` are intentionally not copied; install them inside the worktree with the repository package manager.
 
 Worktree base refs are resolved in this order:
 
@@ -220,13 +215,15 @@ When `fw add` appends repositories to a workspace without `--create-from` and th
 
 ## tmux Runtime
 
-`runtime.tmux.windows` defines the commands `fw open` starts. A window with `repo` uses that repository's target path from the workspace; if the workspace does not include that repository, the window is skipped. A window with `path` always uses that expanded path, which is useful for baseline services such as `auth-backend`.
+`runtime.tmux.windows` defines the commands `fw open` starts. A window with `repo` uses that repository's target path from the workspace; if the workspace does not include that repository, the window is skipped. A window with `path` always uses that expanded path, which is useful for baseline services you intentionally want in every matching workspace.
 
 Each tmux window runs:
 
 ```sh
-cd <path> && <shellPrefix> && <install> && <command>
+cd <path> && <shellPrefix> && <install> && <command>; exec ${SHELL:-/bin/zsh} -l
 ```
+
+The final `exec` keeps the tmux window open as an interactive shell after the command exits, including when you press `Ctrl-C`.
 
 By default, `fw open` opens the editor first, then kills an existing tmux session with the same name, kills processes matching each planned window path, waits two seconds, creates the session, waits `startupDelaySeconds`, and prints `tmux list-windows`.
 

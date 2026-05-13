@@ -130,7 +130,7 @@ describe("fw CLI integration", () => {
     });
   });
 
-  test("create copies default ignored runtime files when config omits copyIgnored", () => {
+  test("create copies default ignored runtime files throughout a monorepo when config omits copyIgnored", () => {
     withTempDir((workspaceRoot) => {
       const sourceRoot = path.join(workspaceRoot, "sources");
       const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
@@ -138,7 +138,7 @@ describe("fw CLI integration", () => {
       const targetRepo = path.join(workspaceRoot, "worktrees", "DEV-830", "repo-a");
 
       createGitRepo(sourceRepo);
-      writeFileSync(path.join(sourceRepo, ".gitignore"), ".env\n.npmrc\nsecrets/\nnode_modules/\n");
+      writeFileSync(path.join(sourceRepo, ".gitignore"), "**/.env\n**/.npmrc\n**/secrets/\nnode_modules/\n");
       git(sourceRepo, ["add", ".gitignore"]);
       git(sourceRepo, [
         "-c",
@@ -154,6 +154,10 @@ describe("fw CLI integration", () => {
       mkdirSync(path.join(sourceRepo, "secrets"), { recursive: true });
       writeFileSync(path.join(sourceRepo, "secrets", "jwtKey"), "private-key\n");
       writeFileSync(path.join(sourceRepo, "secrets", "jwtKey.pub"), "public-key\n");
+      mkdirSync(path.join(sourceRepo, "apps", "web", "secrets"), { recursive: true });
+      writeFileSync(path.join(sourceRepo, "apps", "web", ".env"), "WEB_TOKEN=source\n");
+      writeFileSync(path.join(sourceRepo, "apps", "web", ".npmrc"), "//registry.example.test/:_authToken=web\n");
+      writeFileSync(path.join(sourceRepo, "apps", "web", "secrets", "api.key"), "api-key\n");
       mkdirSync(path.join(sourceRepo, "node_modules"), { recursive: true });
       writeFileSync(path.join(sourceRepo, "node_modules", "ignored.js"), "module.exports = true;\n");
       writeConfig(workspaceRoot, {
@@ -168,21 +172,26 @@ describe("fw CLI integration", () => {
       expect(create.stdout).toContain(".npmrc ->");
       expect(create.stdout).toContain("secrets/jwtKey ->");
       expect(create.stdout).toContain("secrets/jwtKey.pub ->");
+      expect(create.stdout).toContain("apps/web/.env ->");
+      expect(create.stdout).toContain("apps/web/.npmrc ->");
+      expect(create.stdout).toContain("apps/web/secrets/api.key ->");
       expect(create.stdout).not.toContain("node_modules");
       expect(create.stdout).toContain("Apply complete.");
       expect(readFileSync(path.join(targetRepo, ".env"), "utf8")).toBe("TOKEN=source\n");
       expect(readFileSync(path.join(targetRepo, ".npmrc"), "utf8")).toBe("//registry.example.test/:_authToken=source\n");
       expect(readFileSync(path.join(targetRepo, "secrets", "jwtKey"), "utf8")).toBe("private-key\n");
       expect(readFileSync(path.join(targetRepo, "secrets", "jwtKey.pub"), "utf8")).toBe("public-key\n");
+      expect(readFileSync(path.join(targetRepo, "apps", "web", ".env"), "utf8")).toBe("WEB_TOKEN=source\n");
+      expect(readFileSync(path.join(targetRepo, "apps", "web", ".npmrc"), "utf8")).toBe("//registry.example.test/:_authToken=web\n");
+      expect(readFileSync(path.join(targetRepo, "apps", "web", "secrets", "api.key"), "utf8")).toBe("api-key\n");
       expect(existsSync(path.join(targetRepo, "node_modules", "ignored.js"))).toBe(false);
 
       const manifestPath = path.join(workspaceRoot, ".fw", "workspaces", "DEV-830.yaml");
       const manifest = readFileSync(manifestPath, "utf8");
       expect(manifest).toContain("copyIgnored:");
-      expect(manifest).toContain("- .env");
-      expect(manifest).toContain("- .npmrc");
-      expect(manifest).toContain("- secrets/jwtKey");
-      expect(manifest).toContain("- secrets/jwtKey.pub");
+      expect(manifest).toContain("- :(glob)**/.env");
+      expect(manifest).toContain("- :(glob)**/.npmrc");
+      expect(manifest).toContain("- :(glob)**/secrets/**");
     });
   });
 
@@ -209,6 +218,121 @@ describe("fw CLI integration", () => {
       expect(create.stdout).not.toContain("requested base ref DEV-790 cannot be used because DEV-830 already exists");
       expect(create.stdout).toContain("Apply complete.");
       expect(existsSync(targetRepo)).toBe(true);
+    });
+  });
+
+  test("create starts configured tmux runtime after opening the editor", () => {
+    withTempDir((workspaceRoot) => {
+      const sourceRoot = path.join(workspaceRoot, "sources");
+      const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
+      const sourceRepo = path.join(sourceRoot, "repo-a");
+      const fakeBin = path.join(workspaceRoot, "bin");
+      const tmuxLog = path.join(workspaceRoot, "tmux.log");
+
+      createGitRepo(sourceRepo);
+      mkdirSync(fakeBin, { recursive: true });
+      writeFileSync(
+        path.join(fakeBin, "tmux"),
+        `#!/bin/sh
+printf '%s\\n' "$*" >> "$TMUX_LOG"
+if [ "$1" = "list-windows" ]; then
+  printf '0: repo-a*\\n'
+fi
+exit 0
+`,
+      );
+      chmodSync(path.join(fakeBin, "tmux"), 0o755);
+      writeConfig(workspaceRoot, {
+        sourceRoot,
+        worktreeRoot,
+        runtime: `runtime:
+  tmux:
+    enabled: true
+    sessionName: "{workspaceLower}"
+    killExisting: true
+    killProcessPatterns: []
+    startupDelaySeconds: 0
+    shellPrefix: ""
+    windows:
+      - name: repo-a
+        repo: repo-a
+        command: yarn dev
+`,
+      });
+
+      const create = runCli(
+        workspaceRoot,
+        ["create", "DEV-830", "--repos", "repo-a"],
+        "y\n",
+        {
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          TMUX_LOG: tmuxLog,
+        },
+      );
+
+      expect(create.status).toBe(0);
+      expect(create.stdout).toContain("Apply complete.");
+      expect(create.stdout).toContain("Opening editor:");
+      expect(create.stdout).toContain("0: repo-a*");
+      expect(create.stdout.indexOf("Opening editor:")).toBeLessThan(create.stdout.indexOf("0: repo-a*"));
+
+      const tmuxCommands = readFileSync(tmuxLog, "utf8");
+      expect(tmuxCommands).toContain("has-session -t dev-830");
+      expect(tmuxCommands).toContain("new-session -d -s dev-830 -n repo-a");
+      expect(tmuxCommands).toContain(`cd ${path.join(workspaceRoot, "worktrees", "DEV-830", "repo-a")} && yarn dev; exec \${SHELL:-/bin/zsh} -l`);
+    });
+  });
+
+  test("default tmux runtime starts only selected workspace repositories", () => {
+    withTempDir((workspaceRoot) => {
+      const sourceRoot = path.join(workspaceRoot, "sources");
+      const worktreeRoot = path.join(workspaceRoot, "worktrees", "{workspace}");
+      const intuitivo = path.join(sourceRoot, "intuitivo");
+      const testsBackend = path.join(sourceRoot, "tests-backend");
+      const authBackend = path.join(sourceRoot, "auth-backend");
+      const fakeBin = path.join(workspaceRoot, "bin");
+      const tmuxLog = path.join(workspaceRoot, "tmux.log");
+
+      createGitRepo(intuitivo);
+      createGitRepo(testsBackend);
+      createGitRepo(authBackend);
+      mkdirSync(fakeBin, { recursive: true });
+      writeFileSync(
+        path.join(fakeBin, "tmux"),
+        `#!/bin/sh
+printf '%s\\n' "$*" >> "$TMUX_LOG"
+if [ "$1" = "list-windows" ]; then
+  printf '0: intuitivo*\\n1: tests-backend\\n'
+fi
+exit 0
+`,
+      );
+      chmodSync(path.join(fakeBin, "tmux"), 0o755);
+      writeConfig(workspaceRoot, {
+        sourceRoot,
+        worktreeRoot,
+        runtime: defaultTmuxRuntimeConfig(),
+      });
+
+      const create = runCli(
+        workspaceRoot,
+        ["create", "DEV-830", "--repos", "intuitivo,tests-backend"],
+        "y\n",
+        {
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          TMUX_LOG: tmuxLog,
+        },
+      );
+
+      expect(create.status).toBe(0);
+      expect(create.stdout).toContain("0: intuitivo*");
+      expect(create.stdout).toContain("1: tests-backend");
+      expect(create.stdout).not.toContain("auth-backend");
+
+      const tmuxCommands = readFileSync(tmuxLog, "utf8");
+      expect(tmuxCommands).toContain("new-session -d -s dev-830 -n intuitivo");
+      expect(tmuxCommands).toContain("new-window -t dev-830 -n tests-backend");
+      expect(tmuxCommands).not.toContain("auth-backend");
     });
   });
 
@@ -430,8 +554,8 @@ exit 0
       expect(tmuxCommands).toContain("has-session -t dev-123");
       expect(tmuxCommands).toContain("new-session -d -s dev-123 -n repo-a");
       expect(tmuxCommands).toContain("new-window -t dev-123 -n auth-backend");
-      expect(tmuxCommands).toContain(`cd ${sourceRepo} && source ~/.nvm/nvm.sh && nvm use --silent && yarn install && yarn dev`);
-      expect(tmuxCommands).toContain(`cd ${authBackend} && source ~/.nvm/nvm.sh && nvm use --silent && yarn install && yarn dev`);
+      expect(tmuxCommands).toContain(`cd ${sourceRepo} && source ~/.nvm/nvm.sh && nvm use --silent && yarn install && yarn dev; exec \${SHELL:-/bin/zsh} -l`);
+      expect(tmuxCommands).toContain(`cd ${authBackend} && source ~/.nvm/nvm.sh && nvm use --silent && yarn install && yarn dev; exec \${SHELL:-/bin/zsh} -l`);
     });
   });
 
@@ -547,6 +671,7 @@ function writeConfig(
     sourceRoot: string;
     worktreeRoot: string;
     copyIgnored?: string[];
+    runtime?: string;
   },
 ): void {
   const fwDir = path.join(workspaceRoot, ".fw");
@@ -565,8 +690,29 @@ ${formatCopyIgnoredConfig(input.copyIgnored)}
 editor:
   command: "true"
   newWindow: false
+
+${input.runtime ?? disabledRuntimeConfig()}
 `,
   );
+}
+
+function disabledRuntimeConfig(): string {
+  return `runtime:
+  tmux:
+    enabled: false
+`;
+}
+
+function defaultTmuxRuntimeConfig(): string {
+  return `runtime:
+  tmux:
+    enabled: true
+    sessionName: "{workspaceLower}"
+    killExisting: true
+    killProcessPatterns: []
+    startupDelaySeconds: 0
+    shellPrefix: "source ~/.nvm/nvm.sh && nvm use --silent"
+`;
 }
 
 function formatCopyIgnoredConfig(patterns: string[] | undefined): string {

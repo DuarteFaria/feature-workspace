@@ -9,10 +9,9 @@ defaults:
   sourceRoot: ~/Documents/intuitivo
   worktreeRoot: ~/FeatureWorkspaces/{workspace}
   copyIgnored:
-    - .env
-    - .npmrc
-    - secrets/jwtKey
-    - secrets/jwtKey.pub
+    - ":(glob)**/.env"
+    - ":(glob)**/.npmrc"
+    - ":(glob)**/secrets/**"
 
 editor:
   command: zed
@@ -29,7 +28,7 @@ runtime:
       - name: intuitivo
         repo: intuitivo
         install: yarn install
-        command: yarn start
+        command: yarn build && yarn start
       - name: tests-backend
         repo: tests-backend
         install: yarn install
@@ -38,10 +37,6 @@ runtime:
         repo: generate-assessment
         install: pnpm install
         command: pnpm dev
-      - name: auth-backend
-        path: "{sourceRoot}/auth-backend"
-        install: yarn install
-        command: yarn dev
 
 repositories:
   - name: intuitivo

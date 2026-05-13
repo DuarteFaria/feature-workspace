@@ -22,7 +22,7 @@ export const DEFAULT_TMUX_RUNTIME: TmuxRuntimeManifest = {
       name: "intuitivo",
       repo: "intuitivo",
       install: "yarn install",
-      command: "yarn start",
+      command: "yarn build && yarn start",
     },
     {
       name: "tests-backend",
@@ -35,12 +35,6 @@ export const DEFAULT_TMUX_RUNTIME: TmuxRuntimeManifest = {
       repo: "generate-assessment",
       install: "pnpm install",
       command: "pnpm dev",
-    },
-    {
-      name: "auth-backend",
-      path: "{sourceRoot}/auth-backend",
-      install: "yarn install",
-      command: "yarn dev",
     },
   ],
 };
@@ -157,7 +151,7 @@ function planTmuxWindow(
   const installCommand = window.install ?? null;
   const runCommand = window.command;
   const shellPrefix = window.shellPrefix ?? defaultShellPrefix;
-  const shellCommand = [
+  const startupCommand = [
     `cd ${shellEscape(windowPath)}`,
     shellPrefix,
     installCommand,
@@ -165,6 +159,7 @@ function planTmuxWindow(
   ]
     .filter((part): part is string => Boolean(part))
     .join(" && ");
+  const shellCommand = `${startupCommand}; exec \${SHELL:-/bin/zsh} -l`;
 
   return {
     name: window.name,

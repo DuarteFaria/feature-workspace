@@ -18,6 +18,32 @@ export type WorkspaceRef = {
   source: "active" | "archive" | "path";
 };
 
+export type ActiveWorkspaceSummary = {
+  name: string;
+  manifestPath: string;
+  repositories: string[];
+};
+
+export function listActiveWorkspaces(): ActiveWorkspaceSummary[] {
+  if (!existsSync(ACTIVE_WORKSPACES_DIR)) {
+    return [];
+  }
+
+  return readdirSync(ACTIVE_WORKSPACES_DIR)
+    .filter((entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"))
+    .map((entry) => {
+      const manifestPath = path.resolve(ACTIVE_WORKSPACES_DIR, entry);
+      const manifest = loadManifest(manifestPath);
+
+      return {
+        name: manifest.name,
+        manifestPath,
+        repositories: manifest.repositories.map((repository) => repository.name),
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 export function loadWorkspace(input: string): WorkspaceRef {
   const manifestPath = resolveWorkspaceManifestPath(input);
   const manifest = loadManifest(manifestPath);

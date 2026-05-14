@@ -22,9 +22,50 @@ describe("fw CLI integration", () => {
       expect(runCli(workspaceRoot, ["gc"]).status).toBe(0);
       expect(existsSync(path.join(workspaceRoot, ".fw"))).toBe(false);
 
+      const list = runCli(workspaceRoot, ["list"]);
+      expect(list.status).toBe(0);
+      expect(list.stdout).toContain("No active workspaces found.");
+      expect(existsSync(path.join(workspaceRoot, ".fw"))).toBe(false);
+
       const missingPlan = runCli(workspaceRoot, ["plan", "MISSING"]);
       expect(missingPlan.status).not.toBe(0);
       expect(existsSync(path.join(workspaceRoot, ".fw"))).toBe(false);
+    });
+  });
+
+  test("lists active workspaces", () => {
+    withTempDir((workspaceRoot) => {
+      const manifestDir = path.join(workspaceRoot, ".fw", "workspaces");
+      mkdirSync(manifestDir, { recursive: true });
+      writeFileSync(
+        path.join(manifestDir, "DEV-200.yaml"),
+        `name: DEV-200
+repositories:
+  - name: repo-b
+    sourcePath: repo-b
+`,
+      );
+      writeFileSync(
+        path.join(manifestDir, "DEV-100.yaml"),
+        `name: DEV-100
+repositories:
+  - name: repo-a
+    sourcePath: repo-a
+  - name: repo-c
+    sourcePath: repo-c
+`,
+      );
+
+      const list = runCli(workspaceRoot, ["list"]);
+
+      expect(list.status).toBe(0);
+      expect(list.stdout).toContain("Active workspaces:");
+      expect(list.stdout).toContain("- DEV-100");
+      expect(list.stdout).toContain("- DEV-200");
+      expect(list.stdout.indexOf("- DEV-100")).toBeLessThan(list.stdout.indexOf("- DEV-200"));
+      expect(list.stdout).toContain(".fw/workspaces/DEV-100.yaml");
+      expect(list.stdout).toContain("repositories: repo-a, repo-c");
+      expect(list.stdout).toContain("repositories: repo-b");
     });
   });
 

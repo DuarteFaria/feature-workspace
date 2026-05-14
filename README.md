@@ -6,6 +6,8 @@ Personal CLI for planning feature-first, multi-repository workspaces.
 
 `fw add` appends repositories to an existing active workspace manifest, shows the updated plan, and asks for confirmation before creating missing worktrees or copying ignored runtime files.
 
+`fw list` is read-only: it lists active workspace manifests under `.fw/workspaces`.
+
 `fw plan` is read-only: it reads a workspace manifest and prints the Git worktree actions and Zed command that would be used for the workspace.
 
 `fw apply` prints the same plan, asks for confirmation, and then creates the planned worktrees and copies configured ignored runtime files. It does not open Zed, archive workspaces, or delete anything.
@@ -68,6 +70,12 @@ bun run fw add DEV-123 tests-backend,generate-assessment
 ```
 
 `fw add` only updates active workspace manifests under `.fw/workspaces`. It rejects archived manifests and arbitrary manifest paths. Before saving, it builds the updated plan and leaves the manifest unchanged if the added repositories produce critical warnings, such as missing source repositories.
+
+List active workspaces:
+
+```sh
+bun run fw list
+```
 
 By default, `fw create` records each selected source repository's currently checked-out branch as the worktree base ref. To create a workspace branch from a specific base ref instead:
 

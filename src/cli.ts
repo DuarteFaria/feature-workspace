@@ -6,7 +6,13 @@ import { runGc } from "./gc";
 import { buildPlan, formatPlan } from "./plan";
 import { startTmuxSession } from "./runtime";
 import { buildStatus, formatStatus } from "./status";
-import { createWorkspaceManifest, loadWorkspace, prepareWorkspaceRepositoryAddition, saveWorkspaceManifest } from "./workspaceStore";
+import {
+  createWorkspaceManifest,
+  listActiveWorkspaces,
+  loadWorkspace,
+  prepareWorkspaceRepositoryAddition,
+  saveWorkspaceManifest,
+} from "./workspaceStore";
 import type { WorkspacePlan } from "./domain";
 
 const [, , command, ...commandArgs] = process.argv;
@@ -22,6 +28,25 @@ try {
     }
 
     runGc({ apply, forceApply });
+    process.exit(0);
+  }
+
+  if (command === "list") {
+    const workspaces = listActiveWorkspaces();
+
+    if (workspaces.length === 0) {
+      console.log("No active workspaces found.");
+      process.exit(0);
+    }
+
+    console.log("Active workspaces:");
+    for (const workspace of workspaces) {
+      const repoSummary = workspace.repositories.length === 0 ? "no repositories" : workspace.repositories.join(", ");
+      console.log(`- ${workspace.name}`);
+      console.log(`  manifest: ${workspace.manifestPath}`);
+      console.log(`  repositories: ${repoSummary}`);
+    }
+
     process.exit(0);
   }
 
@@ -149,6 +174,7 @@ function printUsage(): void {
   console.log(`Usage:
   fw create <workspace> --repos repo-a,repo-b [--create-from ref]
   fw add <workspace> repo-a[,repo-b] [repo-c] [--create-from ref]
+  fw list
   fw plan <workspace|manifest.yaml>
   fw apply <workspace|manifest.yaml>
   fw open <workspace|manifest.yaml>
@@ -160,6 +186,7 @@ Examples:
   bun run fw create DEV-123 --repos intuitivo,tests-backend,generate-assessment
   bun run fw create DEV-830 --repos intuitivo --create-from DEV-790
   bun run fw add DEV-123 tests-backend,generate-assessment
+  bun run fw list
   bun run fw plan DEV-123
   bun run fw apply DEV-123
   bun run fw open DEV-123
